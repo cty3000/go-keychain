@@ -1,5 +1,5 @@
-// +build darwin
-// +build go1.10
+//go:build darwin && go1.10
+// +build darwin,go1.10
 
 package keychain
 
@@ -101,13 +101,43 @@ var (
 	*/
 	SecClassGenericPassword  SecClass = 1
 	SecClassInternetPassword SecClass = 2
+	/*
+		kSecClassIdentity item attributes:
+		 kSecAttrAccess (macOS only)
+		 kSecAttrAccessGroup (iOS only)
+		 kSecAttrAccessible (iOS only)
+		 kSecAttrKeyClass
+		 kSecAttrLabel
+		 kSecAttrApplicationLabel
+		 kSecAttrIsPermanent
+		 kSecAttrApplicationTag
+		 kSecAttrKeyType
+		 kSecAttrPRF
+		 kSecAttrSalt
+		 kSecAttrRounds
+		 kSecAttrKeySizeInBits
+		 kSecAttrEffectiveKeySize
+		 kSecAttrCanEncrypt
+		 kSecAttrCanDecrypt
+		 kSecAttrCanDerive
+		 kSecAttrCanSign
+		 kSecAttrCanVerify
+		 kSecAttrCanWrap
+		 kSecAttrCanUnwrap
+	*/
+	SecClassIdentity    SecClass = 3
+	SecClassKey         SecClass = 4
+	SecClassCertificate SecClass = 5
 )
 
-// SecClassKey is the key type for SecClass
-var SecClassKey = attrKey(C.CFTypeRef(C.kSecClass))
+// SecClassKeyDef is the key type for SecClass
+var SecClassKeyDef = attrKey(C.CFTypeRef(C.kSecClass))
 var secClassTypeRef = map[SecClass]C.CFTypeRef{
 	SecClassGenericPassword:  C.CFTypeRef(C.kSecClassGenericPassword),
 	SecClassInternetPassword: C.CFTypeRef(C.kSecClassInternetPassword),
+	SecClassIdentity:         C.CFTypeRef(C.kSecClassIdentity),
+	SecClassKey:              C.CFTypeRef(C.kSecClassKey),
+	SecClassCertificate:      C.CFTypeRef(C.kSecClassCertificate),
 }
 
 var (
@@ -128,11 +158,11 @@ var (
 	// ModificationDateKey is for kSecAttrModificationDate
 	ModificationDateKey = attrKey(C.CFTypeRef(C.kSecAttrModificationDate))
 	// ServerKey is for kSecAttrServer
-    ServerKey = attrKey(C.CFTypeRef(C.kSecAttrServer))
-    // ProtocolKey is for kSecAttrProtocol
-    ProtocolKey = attrKey(C.CFTypeRef(C.kSecAttrProtocol))
-    // PortKey is for kSecAttrPort
-    PortKey = attrKey(C.CFTypeRef(C.kSecAttrPort))
+	ServerKey = attrKey(C.CFTypeRef(C.kSecAttrServer))
+	// ProtocolKey is for kSecAttrProtocol
+	ProtocolKey = attrKey(C.CFTypeRef(C.kSecAttrProtocol))
+	// PortKey is for kSecAttrPort
+	PortKey = attrKey(C.CFTypeRef(C.kSecAttrPort))
 )
 
 // Synchronizable is the items synchronizable status
@@ -215,7 +245,7 @@ type Item struct {
 
 // SetSecClass sets the security class
 func (k *Item) SetSecClass(sc SecClass) {
-	k.attr[SecClassKey] = secClassTypeRef[sc]
+	k.attr[SecClassKeyDef] = secClassTypeRef[sc]
 }
 
 // SetString sets a string attribute for a string key
@@ -229,11 +259,11 @@ func (k *Item) SetString(key string, s string) {
 
 // SetInt sets an int32 attribute for a string key
 func (k *Item) SetInt(key string, i int32) {
-       if i != 0 {
-               k.attr[key] = i
-       } else {
-               delete(k.attr, key)
-       }
+	if i != 0 {
+		k.attr[key] = i
+	} else {
+		delete(k.attr, key)
+	}
 }
 
 // SetService sets the service attribute
@@ -253,17 +283,17 @@ func (k *Item) SetLabel(l string) {
 
 // SetServer sets the server attribute
 func (k *Item) SetServer(l string) {
-       k.SetString(ServerKey, l)
+	k.SetString(ServerKey, l)
 }
 
 // SetProtocol sets the protocol attribute
 func (k *Item) SetProtocol(l string) {
-       k.SetString(ProtocolKey, l)
+	k.SetString(ProtocolKey, l)
 }
 
 // SetPort sets the port attribute
 func (k *Item) SetPort(l int32) {
-       k.SetInt(ProtocolKey, l)
+	k.SetInt(ProtocolKey, l)
 }
 
 // SetDescription sets the description attribute
@@ -382,9 +412,9 @@ type QueryResult struct {
 	AccessGroup      string
 	Label            string
 	Description      string
-    Server           string
-    Protocol         string
-    Port             int32
+	Server           string
+	Protocol         string
+	Port             int32
 	Data             []byte
 	CreationDate     time.Time
 	ModificationDate time.Time
@@ -477,12 +507,12 @@ func convertResult(d C.CFDictionaryRef) (*QueryResult, error) {
 			result.Label = CFStringToString(C.CFStringRef(v))
 		case DescriptionKey:
 			result.Description = CFStringToString(C.CFStringRef(v))
-        case ProtocolKey:
-            result.Protocol = CFStringToString(C.CFStringRef(v))
-        case ServerKey:
-            result.Server = CFStringToString(C.CFStringRef(v))
-        case PortKey:
-            result.Port = CFNumberToInterface(C.CFNumberRef(v)).(int32)
+		case ProtocolKey:
+			result.Protocol = CFStringToString(C.CFStringRef(v))
+		case ServerKey:
+			result.Server = CFStringToString(C.CFStringRef(v))
+		case PortKey:
+			result.Port = CFNumberToInterface(C.CFNumberRef(v)).(int32)
 		case DataKey:
 			b, err := CFDataToBytes(C.CFDataRef(v))
 			if err != nil {
@@ -568,4 +598,61 @@ func GetGenericPassword(service string, account string, label string, accessGrou
 		return results[0].Data, nil
 	}
 	return nil, nil
+}
+
+// GetIdentity returns generic password accounts for service. This is a convenience method.
+func GetIdentity() ([]string, error) {
+	query := NewItem()
+	query.SetSecClass(SecClassIdentity)
+	query.SetMatchLimit(MatchLimitAll)
+	query.SetReturnAttributes(true)
+	results, err := QueryItem(query)
+	if err != nil {
+		return nil, err
+	}
+
+	accounts := make([]string, 0, len(results))
+	for _, r := range results {
+		accounts = append(accounts, r.Account)
+	}
+
+	return accounts, nil
+}
+
+// GetKey returns generic password accounts for service. This is a convenience method.
+func GetKey() ([]string, error) {
+	query := NewItem()
+	query.SetSecClass(SecClassKey)
+	query.SetMatchLimit(MatchLimitAll)
+	query.SetReturnAttributes(true)
+	results, err := QueryItem(query)
+	if err != nil {
+		return nil, err
+	}
+
+	accounts := make([]string, 0, len(results))
+	for _, r := range results {
+		accounts = append(accounts, r.Account)
+	}
+
+	return accounts, nil
+}
+
+// GetCertificate returns generic password accounts for service. This is a convenience method.
+func GetCertificate() ([]string, error) {
+	query := NewItem()
+	query.SetSecClass(SecClassCertificate)
+	query.SetMatchLimit(MatchLimitAll)
+	query.SetReturnAttributes(true)
+	results, err := QueryItem(query)
+	if err != nil {
+		return nil, err
+	}
+
+	accounts := make([]string, 0, len(results))
+	for _, r := range results {
+		accounts = append(accounts, r.Account)
+	}
+
+	return accounts, nil
 }

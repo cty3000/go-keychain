@@ -1,5 +1,5 @@
-// +build darwin,!ios
-// +build go1.10
+//go:build darwin && !ios && go1.10
+// +build darwin,!ios,go1.10
 
 package keychain
 
@@ -11,6 +11,7 @@ package keychain
 */
 import "C"
 import (
+	"fmt"
 	"os"
 	"unsafe"
 )
@@ -173,6 +174,7 @@ func newKeychain(path, password string, promptUser bool) (Keychain, error) {
 
 // NewWithPath to use an existing keychain
 func NewWithPath(path string) Keychain {
+	fmt.Printf("path: %s\n", path)
 	return Keychain{
 		path: path,
 	}
